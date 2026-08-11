@@ -205,7 +205,7 @@ jobs:
 
           cat >> .config <<'EOF'
 
-          CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_hinlink_opc-h29k=y
+          CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_hinlink_opc_h29k=y
           CONFIG_PACKAGE_ttyd=y
           CONFIG_PACKAGE_luci-app-ttyd=y
           EOF
@@ -213,7 +213,7 @@ jobs:
           echo "===== H29K configuration ====="
 
           grep -E \
-            'CONFIG_TARGET_rockchip|CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_hinlink_opc-h29k|CONFIG_PACKAGE_ttyd|CONFIG_PACKAGE_luci-app-ttyd' \
+            'CONFIG_TARGET_rockchip|CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_hinlink_opc_h29k|CONFIG_PACKAGE_ttyd|CONFIG_PACKAGE_luci-app-ttyd' \
             .config || true
 
       - name: Add custom files
@@ -285,7 +285,7 @@ jobs:
           echo "===== TARGET ====="
 
           grep -E \
-            'CONFIG_TARGET_rockchip|CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_hinlink_opc-h29k' \
+            'CONFIG_TARGET_rockchip|CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_hinlink_opc_h29k' \
             .config || true
 
           echo "===== TTYD ====="
@@ -300,7 +300,7 @@ jobs:
           set -e
 
           grep -q \
-            'CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_hinlink_opc-h29k=y' \
+            'CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_hinlink_opc_h29k=y' \
             .config
 
           echo "H29K target selected successfully"
