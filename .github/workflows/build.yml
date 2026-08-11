@@ -141,44 +141,6 @@ jobs:
             cp -a ../files/. .
           fi
 
-      - name: Apply Kwrt patches
-        working-directory: openwrt
-        run: |
-          set -e
-
-          if [ -d devices/common/patches ]; then
-            cp -rn devices/common/patches devices/rockchip_armv8/ || true
-          fi
-
-          if [ -d devices/rockchip_armv8/patches ]; then
-
-            find devices/rockchip_armv8/patches \
-              -maxdepth 1 \
-              -type f \
-              -name '*.bin.patch' \
-              -print0 |
-            xargs -0 -r -n 1 git apply
-
-            find devices/rockchip_armv8/patches \
-              -maxdepth 1 \
-              -type f \
-              -name '*.revert.patch' \
-              -print0 |
-            sort -z |
-            xargs -0 -r -n 1 \
-              sh -c 'patch -d ./ -R --no-backup-if-mismatch -p1 -F 1 -i "$1"' _
-
-            find devices/rockchip_armv8/patches \
-              -maxdepth 1 \
-              -type f \
-              -name '*.patch' \
-              ! -name '*.revert.patch' \
-              ! -name '*.bin.patch' \
-              -print0 |
-            sort -z |
-            xargs -0 -r -n 1 \
-              sh -c 'patch -d ./ --no-backup-if-mismatch -p1 -F 1 -i "$1"' _
-          fi
 
       - name: Defconfig
         working-directory: openwrt
