@@ -203,6 +203,14 @@ jobs:
         run: |
           set -e
 
+          echo "===== Clear existing Rockchip device selection ====="
+
+          sed -i \
+            '/^CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_/d' \
+            .config
+
+          echo "===== Select H29K ====="
+
           cat >> .config <<'EOF'
 
           CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_hinlink_opc-h29k=y
@@ -213,7 +221,7 @@ jobs:
           echo "===== H29K configuration ====="
 
           grep -E \
-            'CONFIG_TARGET_rockchip|CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_hinlink_opc-h29k|CONFIG_PACKAGE_ttyd|CONFIG_PACKAGE_luci-app-ttyd' \
+            'CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_|CONFIG_PACKAGE_ttyd|CONFIG_PACKAGE_luci-app-ttyd' \
             .config || true
 
       - name: Add custom files
