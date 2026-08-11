@@ -67,16 +67,64 @@ jobs:
       - name: Prepare Kwrt
         working-directory: openwrt
         run: |
-          chmod +x devices/common/diy.sh
-          chmod +x devices/rockchip_armv8/diy.sh
+          set -e
+
+          function git_clone_path() {
+            trap 'rm -rf "$tmpdir"' EXIT
+
+            branch="$1"
+            rurl="$2"
+            mv="$3"
+
+            [[ "$mv" != "mv" ]] && shift 2 || shift 3
+
+            rootdir="$PWD"
+            tmpdir="$(mktemp -d)"
+
+            if [ ${#branch} -lt 10 ]; then
+              git clone -b "$branch" --depth 1 --filter=blob:none --sparse "$rurl" "$tmpdir"
+            else
+              git clone --filter=blob:none --sparse "$rurl" "$tmpdir"
+              cd "$tmpdir"
+              git checkout "$branch"
+            fi
+
+            cd "$tmpdir"
+
+            git sparse-checkout init --cone
+            git sparse-checkout set "$@"
+
+            if [[ "$mv" != "mv" ]]; then
+              cp -rn ./* "$rootdir/"
+            else
+              mv -n "$@/"* "$rootdir/$@/"
+            fi
+
+            cd "$rootdir"
+          }
+
+          export -f git_clone_path
 
           export REPO_TOKEN=""
 
+          chmod +x devices/common/diy.sh
+
           /bin/bash devices/common/diy.sh
-      
+
+      - name: Prepare H29K Rockchip target
+        working-directory: openwrt
+        run: |
+          set -e
+
+          chmod +x devices/rockchip_armv8/diy.sh
+
+          /bin/bash devices/rockchip_armv8/diy.sh
+
       - name: Update feeds
         working-directory: openwrt
         run: |
+          set -e
+
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
