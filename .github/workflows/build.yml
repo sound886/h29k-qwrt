@@ -10,8 +10,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Install dependencies
         run: |
@@ -29,6 +27,7 @@ jobs:
             git \
             libncurses5-dev \
             libssl-dev \
+            python3 \
             python3-setuptools \
             rsync \
             swig \
@@ -36,6 +35,7 @@ jobs:
             zlib1g-dev \
             file \
             wget \
+            curl \
             dwarves \
             llvm \
             python3-pyelftools \
@@ -51,19 +51,26 @@ jobs:
             libmpc-dev \
             libfuse-dev
 
-      - name: Clone Kwrt build files
+      - name: Clone Kwrt
         run: |
-          git clone --depth=1 --branch 25.12 \
+          git clone --depth=1 \
+            --branch 25.12 \
             https://github.com/kiddin9/Kwrt.git \
             kwrt
 
-      - name: Clone OpenWrt source
+      - name: Prepare build environment
         run: |
-          git clone --depth=1 --branch v25.12.5 \
-            https://github.com/openwrt/openwrt.git \
-            openwrt
+          set -e
 
-      - name: Prepare Kwrt
+          cd "$GITHUB_WORKSPACE"
+
+          mkdir -p openwrt
+
+          cp -a kwrt/devices/common openwrt/
+          cp -a kwrt/devices/rockchip_armv8 openwrt/
+
+      - name: Run Kwrt common build script
+        working-directory: openwrt
         run: |
           set -e
 
@@ -114,21 +121,20 @@ jobs:
           }
 
           export -f git_clone_path
-
-          mkdir -p openwrt/devices
-
-          cp -rf kwrt/devices/common openwrt/devices/
-          cp -rf kwrt/devices/rockchip_armv8 openwrt/devices/
-
-          cd openwrt
-
-          chmod +x devices/common/diy.sh
-          chmod +x devices/rockchip_armv8/diy.sh
-
           export REPO_TOKEN=""
 
-          /bin/bash devices/common/diy.sh
-          /bin/bash devices/rockchip_armv8/diy.sh
+          chmod +x devices/common/diy.sh
+
+          ./devices/common/diy.sh
+
+      - name: Run Rockchip build script
+        working-directory: openwrt
+        run: |
+          set -e
+
+          chmod +x devices/rockchip_armv8/diy.sh
+
+          ./devices/rockchip_armv8/diy.sh
 
       - name: Apply H29K configuration
         working-directory: openwrt
@@ -142,7 +148,8 @@ jobs:
         run: |
           set -e
 
-          echo "src-git qmodem https://github.com/FUjr/QModem.git;main" >> feeds.conf.default
+          echo "src-git qmodem https://github.com/FUjr/QModem.git;main" \
+            >> feeds.conf.default
 
           ./scripts/feeds update qmodem
           ./scripts/feeds install -a -p qmodem
@@ -152,20 +159,23 @@ jobs:
         run: |
           set -e
 
-          if [ -d ../files ]; then
-            cp -a ../files/. .
-          fi
+          cp -a ../files/. .
 
-      - name: Defconfig
+      - name: Configure
         working-directory: openwrt
         run: |
           set -e
 
           make defconfig
 
-          echo "===== H29K CONFIG ====="
+          echo "===== TARGET ====="
           grep -E \
-            'TARGET_rockchip|hinlink_opc-h29k|qmodem|ttyd|rndis|usb-net' \
+            'CONFIG_TARGET_rockchip|CONFIG_TARGET_DEVICE' \
+            .config || true
+
+          echo "===== MODEM ====="
+          grep -E \
+            'qmodem|ttyd|usb-net|rndis|usb-serial' \
             .config || true
 
       - name: Download sources
@@ -178,16 +188,22 @@ jobs:
         run: |
           set -e
 
-          make -j$(nproc) || {
-            make V=s -j1
-          }
+          make -j$(nproc)
+
+      - name: Compile again with verbose output if failed
+        if: failure()
+        working-directory: openwrt
+        run: |
+          make V=s -j1
 
       - name: Show firmware
+        if: success()
         run: |
           echo "===== BUILD RESULT ====="
           find openwrt/bin/targets -type f -print
 
       - name: Upload firmware
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: H29K-QWRT
