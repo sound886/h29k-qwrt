@@ -71,11 +71,14 @@ jobs:
           chmod +x devices/rockchip_armv8/diy.sh
 
           export REPO_TOKEN=""
-          export TARGET="rockchip_armv8"
 
           /bin/bash devices/common/diy.sh
-
-          /bin/bash devices/rockchip_armv8/diy.sh
+      
+      - name: Update feeds
+        working-directory: openwrt
+        run: |
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
 
       - name: Add H29K configuration
         working-directory: openwrt
