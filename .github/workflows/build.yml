@@ -130,6 +130,16 @@ jobs:
           echo "===== Run Rockchip diy.sh ====="
 
           /bin/bash devices/rockchip_armv8/diy.sh
+      - name: Run Rockchip diy.sh
+        working-directory: openwrt
+        run: |
+          set -e
+
+          chmod +x devices/rockchip_armv8/diy.sh
+
+          echo "===== Run Rockchip diy.sh ====="
+
+          /bin/bash devices/rockchip_armv8/diy.sh
 
       - name: Enable H29K packages
         working-directory: openwrt
