@@ -6,6 +6,7 @@ on:
 env:
   TZ: Asia/Shanghai
   TARGET: rockchip_armv8
+  REPO_URL: https://github.com/openwrt/openwrt
 
 jobs:
   build:
@@ -28,8 +29,10 @@ jobs:
             https://github.com/kiddin9/Kwrt.git \
             kwrt
 
-      - name: Install dependencies
+      - name: Install build dependencies
         run: |
+          set -e
+
           sudo -E apt-get -qq update
 
           sudo -E apt-get -qq install \
@@ -67,6 +70,12 @@ jobs:
             libmpc-dev \
             libfuse-dev
 
+          git config --global user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git config --global user.name \
+            "github-actions[bot]"
+
       - name: Clone OpenWrt
         run: |
           set -e
@@ -77,13 +86,37 @@ jobs:
             https://github.com/openwrt/openwrt.git \
             openwrt
 
+          echo "===== OpenWrt revision ====="
+
+          cd openwrt
+
+          git log -1 --oneline
+
+          cd ..
+
           test -f openwrt/Makefile
           test -f openwrt/include/toplevel.mk
           test -d openwrt/target/linux
 
           echo "OpenWrt source OK"
 
-      - name: Load Kwrt configuration
+      - name: Load Kwrt files
+        run: |
+          set -e
+
+          mkdir -p openwrt
+
+          cp -rf kwrt/devices/common/. \
+            openwrt/
+
+          cp -rf kwrt/devices/${TARGET}/. \
+            openwrt/
+
+          cp -rf kwrt/devices \
+            openwrt/
+
+      - name: Prepare Kwrt build
+        working-directory: openwrt
         run: |
           set -e
 
@@ -117,17 +150,16 @@ jobs:
                 "$tmpdir"
 
               cd "$tmpdir"
+
               git checkout "$branch"
             fi
 
             git sparse-checkout init --cone
+
             git sparse-checkout set "$@"
 
             if [[ "$mv" != "mv" ]]; then
-              rsync -a \
-                --exclude='.git/' \
-                ./ \
-                "$rootdir/"
+              cp -rn ./* "$rootdir/"
             else
               mkdir -p "$rootdir/$@"
               mv -n "$@/"* "$rootdir/$@/"
@@ -138,66 +170,51 @@ jobs:
 
           export -f git_clone_path
 
-          mkdir -p openwrt/devices
-
-          cp -rf kwrt/devices/common/. openwrt/
-          cp -rf kwrt/devices/${TARGET}/. openwrt/
-          cp -rf kwrt/devices openwrt/
-
-          cd openwrt
-
           export REPO_TOKEN=""
 
           chmod +x devices/common/diy.sh
-          chmod +x devices/${TARGET}/diy.sh
 
           echo "===== Run common diy.sh ====="
 
           /bin/bash devices/common/diy.sh
 
-          echo "===== Load common config ====="
-
-          if [ -f devices/common/.config ]; then
-            cp -f devices/common/.config .config
-          fi
-
           echo "===== Load Rockchip config ====="
 
-          if [ -f devices/${TARGET}/.config ]; then
-            echo >> .config
-            cat devices/${TARGET}/.config >> .config
-          fi
+          cp -f \
+            devices/rockchip_armv8/.config \
+            .config
 
           echo "===== Run Rockchip diy.sh ====="
 
-          /bin/bash devices/${TARGET}/diy.sh
+          chmod +x devices/rockchip_armv8/diy.sh
+
+          /bin/bash devices/rockchip_armv8/diy.sh
 
           echo "===== Check Rockchip source ====="
 
           test -f target/linux/rockchip/Makefile
+
           test -f target/linux/rockchip/image/armv8.mk
 
           echo "Rockchip source OK"
 
-          cd ..
-
-      - name: Apply H29K configuration
+      - name: Select H29K
         working-directory: openwrt
         run: |
           set -e
 
-          if [ -f ../config/h29k.config ]; then
-            echo "===== Apply H29K config ====="
-            cat ../config/h29k.config >> .config
-          fi
+          cat >> .config <<'EOF'
 
-      - name: Enable TTYD
-        working-directory: openwrt
-        run: |
-          set -e
+          CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_hinlink_opc-h29k=y
+          CONFIG_PACKAGE_ttyd=y
+          CONFIG_PACKAGE_luci-app-ttyd=y
+          EOF
 
-          echo "CONFIG_PACKAGE_ttyd=y" >> .config
-          echo "CONFIG_PACKAGE_luci-app-ttyd=y" >> .config
+          echo "===== H29K configuration ====="
+
+          grep -E \
+            'CONFIG_TARGET_rockchip|CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_hinlink_opc-h29k|CONFIG_PACKAGE_ttyd|CONFIG_PACKAGE_luci-app-ttyd' \
+            .config || true
 
       - name: Add custom files
         working-directory: openwrt
@@ -213,22 +230,19 @@ jobs:
         run: |
           set -e
 
-          if [ -d devices/common/patches ]; then
-            cp -rn \
-              devices/common/patches \
-              devices/${TARGET}/
-          fi
+          cp -rn \
+            devices/common/patches \
+            devices/rockchip_armv8/ 2>/dev/null || true
 
-          if [ -d devices/${TARGET}/patches ]; then
+          if [ -d devices/rockchip_armv8/patches ]; then
 
-            find devices/${TARGET}/patches \
-              -maxdepth 1 \
-              -type f \
-              -name '*.bin.patch' \
-              -print0 |
-            xargs -0 -r -n 1 git apply
+            if [ -n "$(ls -A devices/rockchip_armv8/patches/*.bin.patch 2>/dev/null)" ]; then
+              git apply \
+                devices/rockchip_armv8/patches/*.bin.patch
+            fi
 
-            find devices/${TARGET}/patches \
+            find \
+              devices/rockchip_armv8/patches \
               -maxdepth 1 \
               -type f \
               -name '*.revert.patch' \
@@ -243,7 +257,8 @@ jobs:
               -F 1 \
               -i "$1"' _
 
-            find devices/${TARGET}/patches \
+            find \
+              devices/rockchip_armv8/patches \
               -maxdepth 1 \
               -type f \
               -name '*.patch' \
@@ -270,7 +285,7 @@ jobs:
           echo "===== TARGET ====="
 
           grep -E \
-            'CONFIG_TARGET_rockchip|CONFIG_TARGET_DEVICE' \
+            'CONFIG_TARGET_rockchip|CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_hinlink_opc-h29k' \
             .config || true
 
           echo "===== TTYD ====="
@@ -278,6 +293,17 @@ jobs:
           grep -E \
             'CONFIG_PACKAGE_ttyd|CONFIG_PACKAGE_luci-app-ttyd' \
             .config || true
+
+      - name: Verify H29K target
+        working-directory: openwrt
+        run: |
+          set -e
+
+          grep -q \
+            'CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_hinlink_opc-h29k=y' \
+            .config
+
+          echo "H29K target selected successfully"
 
       - name: Download
         working-directory: openwrt
@@ -291,18 +317,26 @@ jobs:
         run: |
           set -e
 
-          make -j$(($(nproc)+1)) || {
-            echo "===== VERBOSE BUILD ====="
-            make V=s -j1
-          }
+          echo "===== Start H29K compile ====="
+
+          make -j$(($(nproc)+1))
 
       - name: Show firmware
         if: success()
         run: |
           echo "===== BUILD RESULT ====="
 
-          find openwrt/bin/targets \
+          find \
+            openwrt/bin/targets \
             -type f \
+            -print
+
+          echo "===== H29K FILES ====="
+
+          find \
+            openwrt/bin/targets \
+            -type f \
+            -iname '*h29k*' \
             -print
 
       - name: Upload firmware
