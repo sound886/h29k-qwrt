@@ -89,13 +89,10 @@ jobs:
             cp -a ../files/. .
           fi
 
-      - name: Install modem feed
+      - name: Add QModem
         working-directory: openwrt
         run: |
-          if ! grep -q "FUjr/QModem" feeds.conf.default; then
-            echo "src-git qmodem https://github.com/FUjr/QModem.git;main" >> feeds.conf.default
-          fi
-
+          echo "src-git qmodem https://github.com/FUjr/QModem.git;main" >> feeds.conf.default
           ./scripts/feeds update qmodem
           ./scripts/feeds install -a -p qmodem
 
