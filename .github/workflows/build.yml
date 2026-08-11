@@ -28,14 +28,11 @@ jobs:
 
           echo "===== Clone OpenWrt ====="
 
-          git clone --depth=1 \
-            
+          git clone \
+            --depth=1 \
+            --branch openwrt-25.12 \
             https://github.com/openwrt/openwrt.git \
             openwrt
-                      cd openwrt
-          git log -1 --oneline
-          git describe --tags --always || true
-          cd ..
 
           echo "===== Check OpenWrt ====="
 
@@ -43,7 +40,12 @@ jobs:
           test -f openwrt/include/toplevel.mk
           test -d openwrt/target/linux
 
-          echo "OpenWrt source OK"
+          echo "===== OpenWrt source OK ====="
+
+          cd openwrt
+          git log -1 --oneline
+          git describe --tags --always || true
+          cd ..
 
       - name: Load Kwrt configuration
         run: |
