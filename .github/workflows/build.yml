@@ -3,52 +3,18 @@ name: Build H29K QWRT
 on:
   workflow_dispatch:
 
+env:
+  TZ: Asia/Shanghai
+
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            clang \
-            flex \
-            bison \
-            g++ \
-            gawk \
-            gcc-multilib \
-            g++-multilib \
-            gettext \
-            git \
-            libncurses5-dev \
-            libssl-dev \
-            python3-setuptools \
-            rsync \
-            swig \
-            unzip \
-            zlib1g-dev \
-            file \
-            wget \
-            curl \
-            dwarves \
-            llvm \
-            python3-pyelftools \
-            libpython3-dev \
-            aria2 \
-            jq \
-            qemu-utils \
-            ccache \
-            rename \
-            libelf-dev \
-            device-tree-compiler \
-            libgmp3-dev \
-            libmpc-dev \
-            libfuse-dev
+        uses: actions/checkout@main
+        with:
+          fetch-depth: 0
 
       - name: Clone Kwrt
         run: |
@@ -56,38 +22,43 @@ jobs:
             https://github.com/kiddin9/Kwrt.git \
             kwrt
 
-      - name: Clone OpenWrt
+      - name: Prepare build environment
         run: |
           set -e
+
+          echo "===== Clone OpenWrt ====="
 
           git clone --depth=1 \
             --branch openwrt-25.12 \
             https://github.com/openwrt/openwrt.git \
             openwrt
 
-      - name: Install Kwrt device files
-        run: |
-          set -e
+          echo "===== Check OpenWrt ====="
 
-          mkdir -p openwrt/devices
-
-          cp -a kwrt/devices/common \
-            openwrt/devices/
-
-          cp -a kwrt/devices/rockchip_armv8 \
-            openwrt/devices/
-
-          echo "===== OPENWRT TREE ====="
           test -f openwrt/Makefile
           test -f openwrt/include/toplevel.mk
           test -d openwrt/target/linux
 
-          echo "OpenWrt source tree OK"
+          echo "OpenWrt source OK"
 
-      - name: Run Kwrt common script
-        working-directory: openwrt
+      - name: Load Kwrt configuration
         run: |
           set -e
+
+          cd "$GITHUB_WORKSPACE"
+
+          mkdir -p openwrt/devices
+
+          cp -rf kwrt/devices/common/. \
+            openwrt/
+
+          cp -rf kwrt/devices/rockchip_armv8/. \
+            openwrt/
+
+          cp -rf kwrt/devices \
+            openwrt/
+
+          cd openwrt
 
           function git_clone_path() {
             trap 'rm -rf "$tmpdir"' EXIT
@@ -109,6 +80,8 @@ jobs:
                 --sparse \
                 "$rurl" \
                 "$tmpdir"
+
+              cd "$tmpdir"
             else
               git clone \
                 --filter=blob:none \
@@ -119,8 +92,6 @@ jobs:
               cd "$tmpdir"
               git checkout "$branch"
             fi
-
-            cd "$tmpdir"
 
             git sparse-checkout init --cone
             git sparse-checkout set "$@"
@@ -136,53 +107,96 @@ jobs:
           }
 
           export -f git_clone_path
+
           export REPO_TOKEN=""
 
           chmod +x devices/common/diy.sh
+          chmod +x devices/rockchip_armv8/diy.sh
 
-          ./devices/common/diy.sh
+          echo "===== Run common diy.sh ====="
 
-      - name: Run Kwrt Rockchip script
+          /bin/bash devices/common/diy.sh
+
+          echo "===== Load Rockchip config ====="
+
+          cp -f devices/rockchip_armv8/.config .config
+
+          echo "===== Run Rockchip diy.sh ====="
+
+          /bin/bash devices/rockchip_armv8/diy.sh
+
+      - name: Enable H29K packages
         working-directory: openwrt
         run: |
           set -e
 
-          chmod +x devices/rockchip_armv8/diy.sh
-
-          ./devices/rockchip_armv8/diy.sh
-
-      - name: Apply H29K configuration
-        working-directory: openwrt
-        run: |
-          cat ../config/h29k.config >> .config
-
-      - name: Add QModem
-        working-directory: openwrt
-        run: |
-          echo "src-git qmodem https://github.com/FUjr/QModem.git;main" \
-            >> feeds.conf.default
-
-          ./scripts/feeds update qmodem
-          ./scripts/feeds install -a -p qmodem
+          echo "CONFIG_PACKAGE_ttyd=y" >> .config
 
       - name: Add custom files
         working-directory: openwrt
         run: |
-          cp -a ../files/. .
+          set -e
 
-      - name: Configure
+          if [ -d ../files ]; then
+            cp -a ../files/. .
+          fi
+
+      - name: Apply Kwrt patches
         working-directory: openwrt
         run: |
+          set -e
+
+          if [ -d devices/common/patches ]; then
+            cp -rn devices/common/patches devices/rockchip_armv8/ || true
+          fi
+
+          if [ -d devices/rockchip_armv8/patches ]; then
+
+            find devices/rockchip_armv8/patches \
+              -maxdepth 1 \
+              -type f \
+              -name '*.bin.patch' \
+              -print0 |
+            xargs -0 -r -n 1 git apply
+
+            find devices/rockchip_armv8/patches \
+              -maxdepth 1 \
+              -type f \
+              -name '*.revert.patch' \
+              -print0 |
+            sort -z |
+            xargs -0 -r -n 1 \
+              sh -c 'patch -d ./ -R --no-backup-if-mismatch -p1 -F 1 -i "$1"' _
+
+            find devices/rockchip_armv8/patches \
+              -maxdepth 1 \
+              -type f \
+              -name '*.patch' \
+              ! -name '*.revert.patch' \
+              ! -name '*.bin.patch' \
+              -print0 |
+            sort -z |
+            xargs -0 -r -n 1 \
+              sh -c 'patch -d ./ --no-backup-if-mismatch -p1 -F 1 -i "$1"' _
+          fi
+
+      - name: Defconfig
+        working-directory: openwrt
+        run: |
+          set -e
+
           make defconfig
 
           echo "===== TARGET ====="
+
           grep -E \
             'CONFIG_TARGET_rockchip|CONFIG_TARGET_DEVICE' \
             .config || true
 
-          echo "===== MODEM ====="
+          echo "===== MODEM / TTYD ====="
+
           grep -E \
-            'qmodem|ttyd|usb-net|rndis|usb-serial' \
+            'CONFIG_PACKAGE_ttyd|usb-net|rndis|usb-serial|qmi|mbim' \
             .config || true
 
       - name: Download
@@ -193,23 +207,21 @@ jobs:
       - name: Compile
         working-directory: openwrt
         run: |
-          make -j$(nproc)
+          set -e
 
-      - name: Verbose compile if failed
-        if: failure()
-        working-directory: openwrt
-        run: |
-          make V=s -j1
+          make -j$(($(nproc)+1)) || {
+            make V=s -j1
+          }
 
       - name: Show firmware
         if: success()
         run: |
+          echo "===== BUILD RESULT ====="
           find openwrt/bin/targets -type f -print
 
       - name: Upload firmware
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@main
         with:
           name: H29K-QWRT
           path: openwrt/bin/targets/
-          if-no-files-found: error
