@@ -59,7 +59,7 @@ jobs:
 
       - name: Clone OpenWrt source
         run: |
-          git clone --depth=1 --branch openwrt-25.12 \
+          git clone --depth=1 --branch v25.12.4 \
             https://github.com/openwrt/openwrt.git \
             openwrt
 
