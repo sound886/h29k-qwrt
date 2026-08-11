@@ -64,10 +64,13 @@ jobs:
 
           cd "$GITHUB_WORKSPACE"
 
-          mkdir -p openwrt
+          mkdir -p openwrt/devices
 
-          cp -a kwrt/devices/common openwrt/
-          cp -a kwrt/devices/rockchip_armv8 openwrt/
+          cp -a kwrt/devices/common openwrt/devices/
+          cp -a kwrt/devices/rockchip_armv8 openwrt/devices/
+
+          echo "===== DEVICE FILES ====="
+          find openwrt/devices -maxdepth 2 -type f -print
 
       - name: Run Kwrt common build script
         working-directory: openwrt
