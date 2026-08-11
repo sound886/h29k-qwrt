@@ -27,7 +27,6 @@ jobs:
             git \
             libncurses5-dev \
             libssl-dev \
-            python3 \
             python3-setuptools \
             rsync \
             swig \
@@ -53,26 +52,36 @@ jobs:
 
       - name: Clone Kwrt
         run: |
-          git clone --depth=1 \
-            --branch 25.12 \
+          git clone --depth=1 --branch 25.12 \
             https://github.com/kiddin9/Kwrt.git \
             kwrt
 
-      - name: Prepare build environment
+      - name: Clone OpenWrt
+        run: |
+          git clone --depth=1 \
+            https://github.com/coolsnowwolf/lede.git \
+            openwrt
+
+      - name: Install Kwrt device files
         run: |
           set -e
 
-          cd "$GITHUB_WORKSPACE"
-
           mkdir -p openwrt/devices
 
-          cp -a kwrt/devices/common openwrt/devices/
-          cp -a kwrt/devices/rockchip_armv8 openwrt/devices/
+          cp -a kwrt/devices/common \
+            openwrt/devices/
 
-          echo "===== DEVICE FILES ====="
-          find openwrt/devices -maxdepth 2 -type f -print
+          cp -a kwrt/devices/rockchip_armv8 \
+            openwrt/devices/
 
-      - name: Run Kwrt common build script
+          echo "===== OPENWRT TREE ====="
+          test -f openwrt/Makefile
+          test -f openwrt/include/toplevel.mk
+          test -d openwrt/target/linux
+
+          echo "OpenWrt source tree OK"
+
+      - name: Run Kwrt common script
         working-directory: openwrt
         run: |
           set -e
@@ -94,6 +103,113 @@ jobs:
                 -b "$branch" \
                 --depth 1 \
                 --filter=blob:none \
+                --sparse \
+                "$rurl" \
+                "$tmpdir"
+            else
+              git clone \
+                --filter=blob:none \
+                --sparse \
+                "$rurl" \
+                "$tmpdir"
+
+              cd "$tmpdir"
+              git checkout "$branch"
+            fi
+
+            cd "$tmpdir"
+
+            git sparse-checkout init --cone
+            git sparse-checkout set "$@"
+
+            if [[ "$mv" != "mv" ]]; then
+              cp -rn ./* "$rootdir/"
+            else
+              mkdir -p "$rootdir/$@"
+              mv -n "$@/"* "$rootdir/$@/"
+            fi
+
+            cd "$rootdir"
+          }
+
+          export -f git_clone_path
+          export REPO_TOKEN=""
+
+          chmod +x devices/common/diy.sh
+
+          ./devices/common/diy.sh
+
+      - name: Run Kwrt Rockchip script
+        working-directory: openwrt
+        run: |
+          set -e
+
+          chmod +x devices/rockchip_armv8/diy.sh
+
+          ./devices/rockchip_armv8/diy.sh
+
+      - name: Apply H29K configuration
+        working-directory: openwrt
+        run: |
+          cat ../config/h29k.config >> .config
+
+      - name: Add QModem
+        working-directory: openwrt
+        run: |
+          echo "src-git qmodem https://github.com/FUjr/QModem.git;main" \
+            >> feeds.conf.default
+
+          ./scripts/feeds update qmodem
+          ./scripts/feeds install -a -p qmodem
+
+      - name: Add custom files
+        working-directory: openwrt
+        run: |
+          cp -a ../files/. .
+
+      - name: Configure
+        working-directory: openwrt
+        run: |
+          make defconfig
+
+          echo "===== TARGET ====="
+          grep -E \
+            'CONFIG_TARGET_rockchip|CONFIG_TARGET_DEVICE' \
+            .config || true
+
+          echo "===== MODEM ====="
+          grep -E \
+            'qmodem|ttyd|usb-net|rndis|usb-serial' \
+            .config || true
+
+      - name: Download
+        working-directory: openwrt
+        run: |
+          make download -j8
+
+      - name: Compile
+        working-directory: openwrt
+        run: |
+          make -j$(nproc)
+
+      - name: Verbose compile if failed
+        if: failure()
+        working-directory: openwrt
+        run: |
+          make V=s -j1
+
+      - name: Show firmware
+        if: success()
+        run: |
+          find openwrt/bin/targets -type f -print
+
+      - name: Upload firmware
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: H29K-QWRT
+          path: openwrt/bin/targets/
+          if-no-files-found: error                --filter=blob:none \
                 --sparse \
                 "$rurl" \
                 "$tmpdir"
