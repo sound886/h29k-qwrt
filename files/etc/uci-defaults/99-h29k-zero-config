@@ -1,34 +1,30 @@
 #!/bin/sh
 
-# H29K Zero Configuration
-# LAN/WiFi bridge
-# FM350GL RNDIS modem is managed by QModem
+# H29K QWRT Zero Configuration
 
-uci -q batch <<'EOF'
-set network.lan=interface
-set network.lan.device='br-lan'
-set network.lan.proto='static'
-set network.lan.ipaddr='192.168.1.1'
-set network.lan.netmask='255.255.255.0'
+# Enable WiFi
+uci set wireless.radio0.disabled='0'
 
-set network.wan=interface
-set network.wan.proto='dhcp'
-set network.wan.device='eth1'
+# Create default WiFi AP
+uci -q delete wireless.default_radio0
+uci set wireless.default_radio0='wifi-iface'
+uci set wireless.default_radio0.device='radio0'
+uci set wireless.default_radio0.mode='ap'
+uci set wireless.default_radio0.network='lan'
+uci set wireless.default_radio0.ssid='H29K'
+uci set wireless.default_radio0.encryption='psk2'
+uci set wireless.default_radio0.key='12345678'
 
-set wireless.radio0.disabled='0'
-set wireless.default_radio0=wifi-iface
-set wireless.default_radio0.device='radio0'
-set wireless.default_radio0.mode='ap'
-set wireless.default_radio0.network='lan'
-set wireless.default_radio0.ssid='H29K'
-set wireless.default_radio0.encryption='psk2'
-set wireless.default_radio0.key='1234567890'
-EOF
+# LAN
+uci set network.lan.device='br-lan'
+uci set network.lan.proto='static'
+uci set network.lan.ipaddr='192.168.1.1'
+uci set network.lan.netmask='255.255.255.0'
 
-uci commit network
 uci commit wireless
+uci commit network
 
-/etc/init.d/network reload 2>/dev/null || true
 wifi reload 2>/dev/null || true
+/etc/init.d/network reload 2>/dev/null || true
 
 exit 0
