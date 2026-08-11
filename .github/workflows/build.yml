@@ -29,9 +29,13 @@ jobs:
           echo "===== Clone OpenWrt ====="
 
           git clone --depth=1 \
-            --branch openwrt-25.12 \
+            
             https://github.com/openwrt/openwrt.git \
             openwrt
+                      cd openwrt
+          git log -1 --oneline
+          git describe --tags --always || true
+          cd ..
 
           echo "===== Check OpenWrt ====="
 
