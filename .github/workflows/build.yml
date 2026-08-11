@@ -5,12 +5,14 @@ on:
 
 env:
   TZ: Asia/Shanghai
+  TARGET: rockchip_armv8
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout
         uses: actions/checkout@main
         with:
@@ -18,15 +20,56 @@ jobs:
 
       - name: Clone Kwrt
         run: |
-          git clone --depth=1 --branch 25.12 \
+          set -e
+
+          git clone \
+            --depth=1 \
+            --branch 25.12 \
             https://github.com/kiddin9/Kwrt.git \
             kwrt
 
-      - name: Prepare build environment
+      - name: Install dependencies
+        run: |
+          sudo -E apt-get -qq update
+
+          sudo -E apt-get -qq install \
+            build-essential \
+            clang \
+            flex \
+            bison \
+            g++ \
+            gawk \
+            gcc-multilib \
+            g++-multilib \
+            gettext \
+            git \
+            libncurses5-dev \
+            libssl-dev \
+            python3-setuptools \
+            rsync \
+            swig \
+            unzip \
+            zlib1g-dev \
+            file \
+            wget \
+            dwarves \
+            llvm \
+            python3-pyelftools \
+            libpython3-dev \
+            aria2 \
+            jq \
+            qemu-utils \
+            ccache \
+            rename \
+            libelf-dev \
+            device-tree-compiler \
+            libgmp3-dev \
+            libmpc-dev \
+            libfuse-dev
+
+      - name: Clone OpenWrt
         run: |
           set -e
-
-          echo "===== Clone OpenWrt ====="
 
           git clone \
             --depth=1 \
@@ -34,37 +77,15 @@ jobs:
             https://github.com/openwrt/openwrt.git \
             openwrt
 
-          echo "===== Check OpenWrt ====="
-
           test -f openwrt/Makefile
           test -f openwrt/include/toplevel.mk
           test -d openwrt/target/linux
 
-          echo "===== OpenWrt source OK ====="
-
-          cd openwrt
-          git log -1 --oneline
-          git describe --tags --always || true
-          cd ..
+          echo "OpenWrt source OK"
 
       - name: Load Kwrt configuration
         run: |
           set -e
-
-          cd "$GITHUB_WORKSPACE"
-
-          mkdir -p openwrt/devices
-
-          cp -rf kwrt/devices/common/. \
-            openwrt/
-
-          cp -rf kwrt/devices/rockchip_armv8/. \
-            openwrt/
-
-          cp -rf kwrt/devices \
-            openwrt/
-
-          cd openwrt
 
           function git_clone_path() {
             trap 'rm -rf "$tmpdir"' EXIT
@@ -103,7 +124,10 @@ jobs:
             git sparse-checkout set "$@"
 
             if [[ "$mv" != "mv" ]]; then
-              cp -rn ./* "$rootdir/"
+              rsync -a \
+                --exclude='.git/' \
+                ./ \
+                "$rootdir/"
             else
               mkdir -p "$rootdir/$@"
               mv -n "$@/"* "$rootdir/$@/"
@@ -114,39 +138,66 @@ jobs:
 
           export -f git_clone_path
 
+          mkdir -p openwrt/devices
+
+          cp -rf kwrt/devices/common/. openwrt/
+          cp -rf kwrt/devices/${TARGET}/. openwrt/
+          cp -rf kwrt/devices openwrt/
+
+          cd openwrt
+
           export REPO_TOKEN=""
 
           chmod +x devices/common/diy.sh
-          chmod +x devices/rockchip_armv8/diy.sh
+          chmod +x devices/${TARGET}/diy.sh
 
           echo "===== Run common diy.sh ====="
 
           /bin/bash devices/common/diy.sh
 
+          echo "===== Load common config ====="
+
+          if [ -f devices/common/.config ]; then
+            cp -f devices/common/.config .config
+          fi
+
           echo "===== Load Rockchip config ====="
 
-          cp -f devices/rockchip_armv8/.config .config
+          if [ -f devices/${TARGET}/.config ]; then
+            echo >> .config
+            cat devices/${TARGET}/.config >> .config
+          fi
 
           echo "===== Run Rockchip diy.sh ====="
 
-          /bin/bash devices/rockchip_armv8/diy.sh
-      - name: Run Rockchip diy.sh
+          /bin/bash devices/${TARGET}/diy.sh
+
+          echo "===== Check Rockchip source ====="
+
+          test -f target/linux/rockchip/Makefile
+          test -f target/linux/rockchip/image/armv8.mk
+
+          echo "Rockchip source OK"
+
+          cd ..
+
+      - name: Apply H29K configuration
         working-directory: openwrt
         run: |
           set -e
 
-          chmod +x devices/rockchip_armv8/diy.sh
+          if [ -f ../config/h29k.config ]; then
+            echo "===== Apply H29K config ====="
+            cat ../config/h29k.config >> .config
+          fi
 
-          echo "===== Run Rockchip diy.sh ====="
-
-          /bin/bash devices/rockchip_armv8/diy.sh
-
-      - name: Enable H29K packages
+      - name: Enable TTYD
         working-directory: openwrt
         run: |
           set -e
 
           echo "CONFIG_PACKAGE_ttyd=y" >> .config
+          echo "CONFIG_PACKAGE_luci-app-ttyd=y" >> .config
 
       - name: Add custom files
         working-directory: openwrt
@@ -157,6 +208,57 @@ jobs:
             cp -a ../files/. .
           fi
 
+      - name: Apply Kwrt patches
+        working-directory: openwrt
+        run: |
+          set -e
+
+          if [ -d devices/common/patches ]; then
+            cp -rn \
+              devices/common/patches \
+              devices/${TARGET}/
+          fi
+
+          if [ -d devices/${TARGET}/patches ]; then
+
+            find devices/${TARGET}/patches \
+              -maxdepth 1 \
+              -type f \
+              -name '*.bin.patch' \
+              -print0 |
+            xargs -0 -r -n 1 git apply
+
+            find devices/${TARGET}/patches \
+              -maxdepth 1 \
+              -type f \
+              -name '*.revert.patch' \
+              -print0 |
+            sort -z |
+            xargs -0 -r -n 1 \
+              sh -c \
+              'patch -d ./ \
+              -R \
+              --no-backup-if-mismatch \
+              -p1 \
+              -F 1 \
+              -i "$1"' _
+
+            find devices/${TARGET}/patches \
+              -maxdepth 1 \
+              -type f \
+              -name '*.patch' \
+              ! -name '*.revert.patch' \
+              ! -name '*.bin.patch' \
+              -print0 |
+            sort -z |
+            xargs -0 -r -n 1 \
+              sh -c \
+              'patch -d ./ \
+              --no-backup-if-mismatch \
+              -p1 \
+              -F 1 \
+              -i "$1"' _
+          fi
 
       - name: Defconfig
         working-directory: openwrt
@@ -171,15 +273,17 @@ jobs:
             'CONFIG_TARGET_rockchip|CONFIG_TARGET_DEVICE' \
             .config || true
 
-          echo "===== MODEM / TTYD ====="
+          echo "===== TTYD ====="
 
           grep -E \
-            'CONFIG_PACKAGE_ttyd|usb-net|rndis|usb-serial|qmi|mbim' \
+            'CONFIG_PACKAGE_ttyd|CONFIG_PACKAGE_luci-app-ttyd' \
             .config || true
 
       - name: Download
         working-directory: openwrt
         run: |
+          set -e
+
           make download -j8
 
       - name: Compile
@@ -188,6 +292,7 @@ jobs:
           set -e
 
           make -j$(($(nproc)+1)) || {
+            echo "===== VERBOSE BUILD ====="
             make V=s -j1
           }
 
@@ -195,7 +300,10 @@ jobs:
         if: success()
         run: |
           echo "===== BUILD RESULT ====="
-          find openwrt/bin/targets -type f -print
+
+          find openwrt/bin/targets \
+            -type f \
+            -print
 
       - name: Upload firmware
         if: success()
@@ -203,3 +311,4 @@ jobs:
         with:
           name: H29K-QWRT
           path: openwrt/bin/targets/
+          if-no-files-found: error
