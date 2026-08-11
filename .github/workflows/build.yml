@@ -58,8 +58,11 @@ jobs:
 
       - name: Clone OpenWrt
         run: |
+          set -e
+
           git clone --depth=1 \
-            https://github.com/coolsnowwolf/lede.git \
+            --branch openwrt-25.12 \
+            https://github.com/openwrt/openwrt.git \
             openwrt
 
       - name: Install Kwrt device files
