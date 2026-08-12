@@ -402,6 +402,10 @@ jobs:
             "rk_tsadcv3_get_trim_code" \
             "$KERNEL"
 
+          echo "===== Start H29K compile ====="
+
+          make -j$(($(nproc)+1))
+
       - name: Debug firewall4 build
         if: failure()
         working-directory: openwrt
