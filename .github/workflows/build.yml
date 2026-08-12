@@ -374,9 +374,9 @@ jobs:
             "rk_tsadcv3_get_trim_code" \
             "$KERNEL"
 
-          echo "===== Compile kernel with verbose single job ====="
+          echo "===== Start full OpenWrt compile ====="
 
-          make target/linux/compile V=s -j1
+          make -j$(($(nproc)+1))
 
       - name: Show firmware
         if: success()
