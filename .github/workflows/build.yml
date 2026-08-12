@@ -288,12 +288,24 @@ jobs:
         run: |
           set -e
 
+          echo "===== Initial defconfig ====="
+
           make defconfig
 
-          echo "===== TARGET ====="
+          echo "===== Force H29K after defconfig ====="
+
+          sed -i \
+            '/^CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_.*=y$/d' \
+            .config
+
+          echo \
+            'CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_hinlink_opc-h29k=y' \
+            >> .config
+
+          echo "===== Final target ====="
 
           grep -E \
-            'CONFIG_TARGET_rockchip|CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_hinlink_opc-h29k' \
+            'CONFIG_TARGET_rockchip|CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_' \
             .config || true
 
           echo "===== TTYD ====="
@@ -308,17 +320,17 @@ jobs:
           set -e
 
           grep -q \
-            'CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_hinlink_opc-h29k=y' \
+            '^CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_hinlink_opc-h29k=y$' \
             .config
 
+          if grep -q \
+            '^CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_advantech_rsb4810=y$' \
+            .config; then
+            echo "ERROR: Advantech target is still selected"
+            exit 1
+          fi
+
           echo "H29K target selected successfully"
-
-      - name: Download
-        working-directory: openwrt
-        run: |
-          set -e
-
-          make download -j8
 
       - name: Compile
         working-directory: openwrt
