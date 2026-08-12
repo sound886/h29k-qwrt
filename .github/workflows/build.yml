@@ -6,7 +6,6 @@ on:
 env:
   TZ: Asia/Shanghai
   TARGET: rockchip_armv8
-  REPO_URL: https://github.com/openwrt/openwrt
 
 jobs:
   build:
@@ -89,9 +88,7 @@ jobs:
           echo "===== OpenWrt revision ====="
 
           cd openwrt
-
           git log -1 --oneline
-
           cd ..
 
           test -f openwrt/Makefile
@@ -150,12 +147,10 @@ jobs:
                 "$tmpdir"
 
               cd "$tmpdir"
-
               git checkout "$branch"
             fi
 
             git sparse-checkout init --cone
-
             git sparse-checkout set "$@"
 
             if [[ "$mv" != "mv" ]]; then
@@ -169,10 +164,10 @@ jobs:
           }
 
           export -f git_clone_path
-
           export REPO_TOKEN=""
 
           chmod +x devices/common/diy.sh
+          chmod +x devices/rockchip_armv8/diy.sh
 
           echo "===== Run common diy.sh ====="
 
@@ -186,14 +181,11 @@ jobs:
 
           echo "===== Run Rockchip diy.sh ====="
 
-          chmod +x devices/rockchip_armv8/diy.sh
-
           /bin/bash devices/rockchip_armv8/diy.sh
 
           echo "===== Check Rockchip source ====="
 
           test -f target/linux/rockchip/Makefile
-
           test -f target/linux/rockchip/image/armv8.mk
 
           echo "Rockchip source OK"
@@ -203,26 +195,24 @@ jobs:
         run: |
           set -e
 
-          echo "===== Clear existing Rockchip device selection ====="
-
           sed -i \
             '/^CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_/d' \
             .config
-
-          echo "===== Select H29K ====="
 
           cat >> .config <<'EOF'
 
           CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_hinlink_opc-h29k=y
           CONFIG_PACKAGE_ttyd=y
           CONFIG_PACKAGE_luci-app-ttyd=y
-          
+          CONFIG_PACKAGE_kmod-drm-rockchip=n
+          CONFIG_CEC_CORE=n
+          CONFIG_MEDIA_CEC_SUPPORT=n
           EOF
 
           echo "===== H29K configuration ====="
 
           grep -E \
-            'CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_|CONFIG_PACKAGE_ttyd|CONFIG_PACKAGE_luci-app-ttyd' \
+            'CONFIG_TARGET_rockchip|CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_|CONFIG_PACKAGE_ttyd|CONFIG_PACKAGE_luci-app-ttyd|CONFIG_PACKAGE_kmod-drm-rockchip|CONFIG_CEC_CORE|CONFIG_MEDIA_CEC_SUPPORT' \
             .config || true
 
       - name: Add custom files
@@ -289,30 +279,43 @@ jobs:
         run: |
           set -e
 
-          echo "===== Initial defconfig ====="
-
           make defconfig
 
-          echo "===== Force H29K after defconfig ====="
+          echo "===== TARGET AFTER DEFCONFIG ====="
+
+          grep -E \
+            'CONFIG_TARGET_rockchip|CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_' \
+            .config || true
+
+      - name: Force H29K target
+        working-directory: openwrt
+        run: |
+          set -e
 
           sed -i \
-            '/^CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_.*=y$/d' \
+            '/^CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_/d' \
             .config
 
           echo \
             'CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_hinlink_opc-h29k=y' \
             >> .config
 
-          echo "===== Final target ====="
+          echo \
+            'CONFIG_PACKAGE_kmod-drm-rockchip=n' \
+            >> .config
+
+          echo \
+            'CONFIG_CEC_CORE=n' \
+            >> .config
+
+          echo \
+            'CONFIG_MEDIA_CEC_SUPPORT=n' \
+            >> .config
+
+          echo "===== FINAL H29K TARGET ====="
 
           grep -E \
-            'CONFIG_TARGET_rockchip|CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_' \
-            .config || true
-
-          echo "===== TTYD ====="
-
-          grep -E \
-            'CONFIG_PACKAGE_ttyd|CONFIG_PACKAGE_luci-app-ttyd' \
+            'CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_|CONFIG_PACKAGE_kmod-drm-rockchip|CONFIG_CEC_CORE|CONFIG_MEDIA_CEC_SUPPORT' \
             .config || true
 
       - name: Verify H29K target
@@ -331,7 +334,15 @@ jobs:
             exit 1
           fi
 
+          if grep -q \
+            '^CONFIG_PACKAGE_kmod-drm-rockchip=y$' \
+            .config; then
+            echo "ERROR: kmod-drm-rockchip is still enabled"
+            exit 1
+          fi
+
           echo "H29K target selected successfully"
+
       - name: Remove incompatible GPIO patch for H29K
         working-directory: openwrt
         run: |
@@ -346,32 +357,14 @@ jobs:
           else
             echo "GPIO patch not found, continue"
           fi
-      - name: Fix Rockchip DRM CEC dependency
+
+      - name: Download
         working-directory: openwrt
         run: |
           set -e
 
-          FILE="target/linux/rockchip/modules.mk"
+          make download -j8
 
-          echo "===== Remove unavailable CEC dependency ====="
-
-          sed -i \
-            's/+kmod-cec-core //' \
-            "$FILE"
-
-          sed -i \
-            '/$(LINUX_DIR)\/drivers\/gpu\/drm\/bridge\/synopsys\/dw-hdmi-cec\.ko/d' \
-            "$FILE"
-
-          sed -i \
-            's/$(call AutoProbe,dw-hdmi-cec phy-rockchip-inno-hdmi rockchipdrm,1)/$(call AutoProbe,phy-rockchip-inno-hdmi rockchipdrm,1)/' \
-            "$FILE"
-
-          echo "===== Verify DRM CEC dependency fix ====="
-
-          grep -n \
-            -E 'kmod-cec|dw-hdmi-cec|AutoProbe' \
-            "$FILE" || true
       - name: Compile
         working-directory: openwrt
         run: |
@@ -391,6 +384,9 @@ jobs:
               "$KERNEL"
           else
             echo "ERROR: kernel thermal source not found"
+            find build_dir \
+              -name rockchip_thermal.c \
+              -print
             exit 1
           fi
 
@@ -400,17 +396,15 @@ jobs:
             "rk_tsadcv3_get_trim_code" \
             "$KERNEL"
 
-          echo "===== Start full OpenWrt compile ====="
+          echo "===== Start H29K compile ====="
 
           make -j$(($(nproc)+1))
 
-      - name: Debug Linux kernel build
+      - name: Debug kernel build if failed
         if: failure()
         working-directory: openwrt
         run: |
-          set -e
-
-          echo "===== DEBUG LINUX KERNEL BUILD ====="
+          echo "===== DEBUG PACKAGE KERNEL LINUX ====="
 
           make package/kernel/linux/compile V=s -j1
 
