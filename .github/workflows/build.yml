@@ -183,6 +183,8 @@ jobs:
 
           /bin/bash devices/rockchip_armv8/diy.sh
 
+          cp -Rf ./diy/* ./ || true
+
           echo "===== Check Rockchip source ====="
 
           test -f target/linux/rockchip/Makefile
