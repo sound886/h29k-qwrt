@@ -216,6 +216,8 @@ jobs:
           CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_hinlink_opc-h29k=y
           CONFIG_PACKAGE_ttyd=y
           CONFIG_PACKAGE_luci-app-ttyd=y
+          CONFIG_PACKAGE_kmod-cec=y
+          CONFIG_PACKAGE_kmod-cec-core=y
           EOF
 
           echo "===== H29K configuration ====="
