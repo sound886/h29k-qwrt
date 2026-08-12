@@ -341,6 +341,14 @@ jobs:
 
           make -j$(($(nproc)+1))
 
+      - name: Verbose compile after failure
+        if: failure()
+        working-directory: openwrt
+        run: |
+          echo "===== VERBOSE KERNEL BUILD ====="
+
+          make target/linux/compile V=s -j1
+
       - name: Show firmware
         if: success()
         run: |
