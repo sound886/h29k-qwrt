@@ -351,19 +351,17 @@ jobs:
 
           echo "===== Remove unused Rockchip DRM package ====="
 
-          python3 - <<'PY'
-          from pathlib import Path
+          if grep -q '^define KernelPackage/drm-rockchip$' "$FILE"; then
+            sed -i \
+              '/^define KernelPackage\/drm-rockchip$/,/^\$(eval \$(call KernelPackage,drm-rockchip))$/d' \
+              "$FILE"
+          fi
 
-          p = Path("target/linux/rockchip/modules.mk")
+          echo "===== Verify DRM package removal ====="
 
-          if not p.exists():
-              print("modules.mk not found")
-              raise SystemExit(0)
+          if grep -q 'KernelPackage/drm-rockchip' "$FILE"; then
+            echo "ERROR: drm-rockchip package still exists"
+            exit 1
+          fi
 
-          s = p.read_text()
-
-          start = s.find("define KernelPackage/drm-rockchip")
-
-          if start == -1:
-              print("drm-rockchip package definition not found")
-             
+          echo "Rockchip DRM package successfully removed"
