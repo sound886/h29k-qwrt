@@ -331,6 +331,20 @@ jobs:
           fi
 
           echo "H29K target selected successfully"
+      - name: Remove incompatible GPIO patch for H29K
+        working-directory: openwrt
+        run: |
+          set -e
+
+          PATCH="target/linux/rockchip/patches-6.12/016-v6.13-gpio-rockchip-support-new-version-GPIO.patch"
+
+          if [ -f "$PATCH" ]; then
+            echo "Removing incompatible GPIO patch:"
+            echo "$PATCH"
+            rm -f "$PATCH"
+          else
+            echo "GPIO patch not found, continue"
+          fi
 
       - name: Compile
         working-directory: openwrt
