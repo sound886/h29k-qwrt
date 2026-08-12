@@ -365,3 +365,69 @@ jobs:
           fi
 
           echo "Rockchip DRM package successfully removed"
+
+                - name: Download
+        working-directory: openwrt
+        run: |
+          set -e
+
+          make download -j8
+
+      - name: Compile
+        working-directory: openwrt
+        run: |
+          set -e
+
+          echo "===== Prepare Linux kernel ====="
+
+          make target/linux/prepare V=s
+
+          KERNEL="build_dir/target-aarch64_generic_musl/linux-rockchip_armv8/linux-6.12.94/drivers/thermal/rockchip_thermal.c"
+
+          echo "===== Fix Rockchip thermal warning ====="
+
+          if [ -f "$KERNEL" ]; then
+            sed -i \
+              's/^static int rk_tsadcv3_get_trim_code(/static __maybe_unused int rk_tsadcv3_get_trim_code(/' \
+              "$KERNEL"
+          else
+            echo "ERROR: kernel thermal source not found"
+            find build_dir -name rockchip_thermal.c -print
+            exit 1
+          fi
+
+          echo "===== Verify thermal fix ====="
+
+          grep -n \
+            "rk_tsadcv3_get_trim_code" \
+            "$KERNEL"
+
+          echo "===== Start H29K compile ====="
+
+          make -j$(($(nproc)+1))
+
+      - name: Show firmware
+        if: success()
+        run: |
+          echo "===== BUILD RESULT ====="
+
+          find \
+            openwrt/bin/targets \
+            -type f \
+            -print
+
+          echo "===== H29K FILES ====="
+
+          find \
+            openwrt/bin/targets \
+            -type f \
+            -iname '*h29k*' \
+            -print
+
+      - name: Upload firmware
+        if: success()
+        uses: actions/upload-artifact@main
+        with:
+          name: H29K-QWRT
+          path: openwrt/bin/targets/
+          if-no-files-found: error
