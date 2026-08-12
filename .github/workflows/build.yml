@@ -351,17 +351,30 @@ jobs:
         run: |
           set -e
 
+          echo "===== Prepare Linux kernel ====="
+
+          make target/linux/prepare V=s
+
+          KERNEL="build_dir/target-aarch64_generic_musl/linux-rockchip_armv8/linux-6.12.94/drivers/thermal/rockchip_thermal.c"
+
+          echo "===== Fix Rockchip thermal warning ====="
+
+          if [ -f "$KERNEL" ]; then
+            sed -i \
+              's/^static int rk_tsadcv3_get_trim_code(/static __maybe_unused int rk_tsadcv3_get_trim_code(/' \
+              "$KERNEL"
+          else
+            echo "ERROR: kernel thermal source not found"
+            exit 1
+          fi
+
+          grep -n \
+            "rk_tsadcv3_get_trim_code" \
+            "$KERNEL"
+
           echo "===== Start H29K compile ====="
 
           make -j$(($(nproc)+1))
-
-      - name: Verbose compile after failure
-        if: failure()
-        working-directory: openwrt
-        run: |
-          echo "===== VERBOSE KERNEL BUILD ====="
-
-          make target/linux/compile V=s -j1
 
       - name: Show firmware
         if: success()
