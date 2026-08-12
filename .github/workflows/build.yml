@@ -378,6 +378,16 @@ jobs:
 
           make -j$(($(nproc)+1))
 
+      - name: Debug Linux kernel build
+        if: failure()
+        working-directory: openwrt
+        run: |
+          set -e
+
+          echo "===== DEBUG LINUX KERNEL BUILD ====="
+
+          make package/kernel/linux/compile V=s -j1
+
       - name: Show firmware
         if: success()
         run: |
