@@ -204,15 +204,12 @@ jobs:
           CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_hinlink_opc-h29k=y
           CONFIG_PACKAGE_ttyd=y
           CONFIG_PACKAGE_luci-app-ttyd=y
-          CONFIG_PACKAGE_kmod-drm-rockchip=n
-          CONFIG_CEC_CORE=n
-          CONFIG_MEDIA_CEC_SUPPORT=n
           EOF
 
           echo "===== H29K configuration ====="
 
           grep -E \
-            'CONFIG_TARGET_rockchip|CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_|CONFIG_PACKAGE_ttyd|CONFIG_PACKAGE_luci-app-ttyd|CONFIG_PACKAGE_kmod-drm-rockchip|CONFIG_CEC_CORE|CONFIG_MEDIA_CEC_SUPPORT' \
+            'CONFIG_TARGET_rockchip|CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_|CONFIG_PACKAGE_ttyd|CONFIG_PACKAGE_luci-app-ttyd' \
             .config || true
 
       - name: Add custom files
@@ -235,10 +232,13 @@ jobs:
 
           if [ -d devices/rockchip_armv8/patches ]; then
 
-            if [ -n "$(ls -A devices/rockchip_armv8/patches/*.bin.patch 2>/dev/null)" ]; then
-              git apply \
-                devices/rockchip_armv8/patches/*.bin.patch
-            fi
+            find \
+              devices/rockchip_armv8/patches \
+              -maxdepth 1 \
+              -type f \
+              -name '*.bin.patch' \
+              -print0 |
+            xargs -0 -r -n 1 git apply
 
             find \
               devices/rockchip_armv8/patches \
@@ -296,26 +296,17 @@ jobs:
             '/^CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_/d' \
             .config
 
-          echo \
-            'CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_hinlink_opc-h29k=y' \
-            >> .config
+          cat >> .config <<'EOF'
 
-          echo \
-            'CONFIG_PACKAGE_kmod-drm-rockchip=n' \
-            >> .config
-
-          echo \
-            'CONFIG_CEC_CORE=n' \
-            >> .config
-
-          echo \
-            'CONFIG_MEDIA_CEC_SUPPORT=n' \
-            >> .config
+          CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_hinlink_opc-h29k=y
+          CONFIG_PACKAGE_ttyd=y
+          CONFIG_PACKAGE_luci-app-ttyd=y
+          EOF
 
           echo "===== FINAL H29K TARGET ====="
 
           grep -E \
-            'CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_|CONFIG_PACKAGE_kmod-drm-rockchip|CONFIG_CEC_CORE|CONFIG_MEDIA_CEC_SUPPORT' \
+            'CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_|CONFIG_PACKAGE_ttyd|CONFIG_PACKAGE_luci-app-ttyd' \
             .config || true
 
       - name: Verify H29K target
@@ -331,13 +322,6 @@ jobs:
             '^CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_advantech_rsb4810=y$' \
             .config; then
             echo "ERROR: Advantech target is still selected"
-            exit 1
-          fi
-
-          if grep -q \
-            '^CONFIG_PACKAGE_kmod-drm-rockchip=y$' \
-            .config; then
-            echo "ERROR: kmod-drm-rockchip is still enabled"
             exit 1
           fi
 
@@ -358,78 +342,28 @@ jobs:
             echo "GPIO patch not found, continue"
           fi
 
-      - name: Download
+      - name: Remove unused Rockchip DRM package
         working-directory: openwrt
         run: |
           set -e
 
-          make download -j8
+          FILE="target/linux/rockchip/modules.mk"
 
-      - name: Compile
-        working-directory: openwrt
-        run: |
-          set -e
+          echo "===== Remove unused Rockchip DRM package ====="
 
-          echo "===== Prepare Linux kernel ====="
+          python3 - <<'PY'
+          from pathlib import Path
 
-          make target/linux/prepare V=s
+          p = Path("target/linux/rockchip/modules.mk")
 
-          KERNEL="build_dir/target-aarch64_generic_musl/linux-rockchip_armv8/linux-6.12.94/drivers/thermal/rockchip_thermal.c"
+          if not p.exists():
+              print("modules.mk not found")
+              raise SystemExit(0)
 
-          echo "===== Fix Rockchip thermal warning ====="
+          s = p.read_text()
 
-          if [ -f "$KERNEL" ]; then
-            sed -i \
-              's/^static int rk_tsadcv3_get_trim_code(/static __maybe_unused int rk_tsadcv3_get_trim_code(/' \
-              "$KERNEL"
-          else
-            echo "ERROR: kernel thermal source not found"
-            find build_dir \
-              -name rockchip_thermal.c \
-              -print
-            exit 1
-          fi
+          start = s.find("define KernelPackage/drm-rockchip")
 
-          echo "===== Verify thermal fix ====="
-
-          grep -n \
-            "rk_tsadcv3_get_trim_code" \
-            "$KERNEL"
-
-          echo "===== Start H29K compile ====="
-
-          make -j$(($(nproc)+1))
-
-      - name: Debug kernel build if failed
-        if: failure()
-        working-directory: openwrt
-        run: |
-          echo "===== DEBUG PACKAGE KERNEL LINUX ====="
-
-          make package/kernel/linux/compile V=s -j1
-
-      - name: Show firmware
-        if: success()
-        run: |
-          echo "===== BUILD RESULT ====="
-
-          find \
-            openwrt/bin/targets \
-            -type f \
-            -print
-
-          echo "===== H29K FILES ====="
-
-          find \
-            openwrt/bin/targets \
-            -type f \
-            -iname '*h29k*' \
-            -print
-
-      - name: Upload firmware
-        if: success()
-        uses: actions/upload-artifact@main
-        with:
-          name: H29K-QWRT
-          path: openwrt/bin/targets/
-          if-no-files-found: error
+          if start == -1:
+              print("drm-rockchip package definition not found")
+             
