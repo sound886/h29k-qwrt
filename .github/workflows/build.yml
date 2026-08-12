@@ -366,7 +366,7 @@ jobs:
 
           echo "Rockchip DRM package successfully removed"
 
-                - name: Download
+      - name: Download
         working-directory: openwrt
         run: |
           set -e
