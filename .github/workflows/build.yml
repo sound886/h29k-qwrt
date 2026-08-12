@@ -216,8 +216,7 @@ jobs:
           CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_hinlink_opc-h29k=y
           CONFIG_PACKAGE_ttyd=y
           CONFIG_PACKAGE_luci-app-ttyd=y
-          CONFIG_PACKAGE_kmod-cec=y
-          CONFIG_PACKAGE_kmod-cec-core=y
+          
           EOF
 
           echo "===== H29K configuration ====="
@@ -347,7 +346,32 @@ jobs:
           else
             echo "GPIO patch not found, continue"
           fi
+      - name: Fix Rockchip DRM CEC dependency
+        working-directory: openwrt
+        run: |
+          set -e
 
+          FILE="target/linux/rockchip/modules.mk"
+
+          echo "===== Remove unavailable CEC dependency ====="
+
+          sed -i \
+            's/+kmod-cec-core //' \
+            "$FILE"
+
+          sed -i \
+            '/$(LINUX_DIR)\/drivers\/gpu\/drm\/bridge\/synopsys\/dw-hdmi-cec\.ko/d' \
+            "$FILE"
+
+          sed -i \
+            's/$(call AutoProbe,dw-hdmi-cec phy-rockchip-inno-hdmi rockchipdrm,1)/$(call AutoProbe,phy-rockchip-inno-hdmi rockchipdrm,1)/' \
+            "$FILE"
+
+          echo "===== Verify DRM CEC dependency fix ====="
+
+          grep -n \
+            -E 'kmod-cec|dw-hdmi-cec|AutoProbe' \
+            "$FILE" || true
       - name: Compile
         working-directory: openwrt
         run: |
