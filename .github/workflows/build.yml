@@ -368,13 +368,15 @@ jobs:
             exit 1
           fi
 
+          echo "===== Verify thermal fix ====="
+
           grep -n \
             "rk_tsadcv3_get_trim_code" \
             "$KERNEL"
 
-          echo "===== Start H29K compile ====="
+          echo "===== Compile kernel with verbose single job ====="
 
-          make -j$(($(nproc)+1))
+          make target/linux/compile V=s -j1
 
       - name: Show firmware
         if: success()
