@@ -430,10 +430,6 @@ jobs:
 
           make -j$(($(nproc)+1))
 
-          echo "===== Start H29K compile ====="
-
-          make -j$(($(nproc)+1))
-
       - name: Debug base-files build
         if: failure()
         working-directory: openwrt
