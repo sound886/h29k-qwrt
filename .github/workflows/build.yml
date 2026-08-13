@@ -404,6 +404,28 @@ jobs:
             "rk_tsadcv3_get_trim_code" \
             "$KERNEL"
 
+          echo "===== Fix APK package version ====="
+
+          sed -i \
+            's/PKG_RELEASE:=.*$/PKG_RELEASE:=1/' \
+            package/base-files/Makefile
+
+          grep -n \
+            'PKG_RELEASE' \
+            package/base-files/Makefile
+          echo "===== Fix APK package version ====="
+
+          find feeds package \
+            -path '*/base-files/Makefile' \
+            -type f \
+            -print
+
+          find feeds package \
+            -path '*/base-files/Makefile' \
+            -type f \
+            -exec sed -i \
+              's/PKG_RELEASE:=.*$/PKG_RELEASE:=1/' {} \;
+
           echo "===== Start H29K compile ====="
 
           make -j$(($(nproc)+1))
