@@ -406,15 +406,6 @@ jobs:
 
           echo "===== Fix APK package version ====="
 
-          sed -i \
-            's/PKG_RELEASE:=.*$/PKG_RELEASE:=1/' \
-            package/base-files/Makefile
-
-          grep -n \
-            'PKG_RELEASE' \
-            package/base-files/Makefile
-          echo "===== Fix APK package version ====="
-
           find feeds package \
             -path '*/base-files/Makefile' \
             -type f \
@@ -424,7 +415,20 @@ jobs:
             -path '*/base-files/Makefile' \
             -type f \
             -exec sed -i \
-              's/PKG_RELEASE:=.*$/PKG_RELEASE:=1/' {} \;
+              -e 's/PKG_RELEASE:=.*$/PKG_RELEASE:=1/' \
+              -e 's|^[[:space:]]*VERSION:=.*$|VERSION:=1|' \
+              {} \;
+
+          echo "===== Verify APK package version ====="
+
+          grep -nE \
+            '^(PKG_RELEASE|VERSION):=' \
+            feeds/base/base-files/Makefile \
+            package/base-files/Makefile 2>/dev/null || true
+
+          echo "===== Start H29K compile ====="
+
+          make -j$(($(nproc)+1))
 
           echo "===== Start H29K compile ====="
 
