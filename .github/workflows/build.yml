@@ -430,17 +430,15 @@ jobs:
 
           make -j$(($(nproc)+1))
 
-      - name: Debug base-files build
+      - name: Debug package install
         if: failure()
         working-directory: openwrt
         run: |
           set -e
 
-          echo "===== DEBUG BASE-FILES BUILD ====="
+          echo "===== DEBUG PACKAGE INSTALL ====="
 
-          make package/base-files/clean V=s || true
-
-          make package/base-files/compile V=s -j1
+          make package/install V=sc -j1
 
       - name: Show firmware
         if: success()
